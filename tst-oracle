@@ -13,7 +13,6 @@ import sys
 import json
 import shlex
 import subprocess
-import codecs
 
 import tstlib as tst
 
@@ -23,17 +22,14 @@ def get_filename(opt):
         print("syntax: tst_oracle [solref.py] [io.json]", file=sys.stderr)
         sys.exit(1)
 
-    # get filename 
     filename = sys.argv[1] if opt == "reference" else sys.argv[2]
 
-    # check if file exists on dir
     if not os.path.exists(filename):
         print("tst_oracle: %s: no such file" % filename, file=sys.stderr)
         sys.exit(1)
         
     return filename
     
-### Runs io tests on tst
 def run_test_command(reference, tstjson):
     
     command_line = "tst test -f %s -o json %s" % (tstjson, reference)
@@ -47,7 +43,6 @@ def run_test_command(reference, tstjson):
         print("tst_orcale: unknown command '%s'" % command, file=sys.stderr)
         print(cmd)
 
-### Oracle evaluation about user io, according to test result
 def oracle_eval(results):
     
     ev = {
@@ -76,7 +71,6 @@ def oracle_eval(results):
         
     return ev
 
-### Pepare json-like output
 def pack_results(results):
     
     result = json.loads(results)
@@ -105,7 +99,7 @@ def main():
 if __name__ == "__main__":
     
     if len(sys.argv) > 1 and sys.argv[1] == '--one-line-help':
-        print("tst oracle: verify if provided input and output are valid")
+        print("verify if provided input and output are valid")
         sys.exit()
 
     if len(sys.argv) < 3:
