@@ -10,81 +10,35 @@ from __future__ import unicode_literals
 
 import os
 import sys
-import md5
-import time
 import json
 import shlex
 import subprocess
+import codecs
 
+import tstlib as tst
 
-import requests
-import tstlib
-
-## Obtain user io tests from command line
-def get_iotests():
-    
-    # was reference provided in command line?
+def get_filename(opt):
+    # was reference or io file provided in command line?
     if len(sys.argv) < 3:
         print("syntax: tst_oracle [solref.py] [io.json]", file=sys.stderr)
         sys.exit(1)
 
-    # get filename
-    iofile = sys.argv[2]
+    # get filename 
+    filename = sys.argv[1] if opt == "reference" else sys.argv[2]
 
-    # check if io file exists on dir
-    if not os.path.exists(iofile):
-        print("tst_oracle: it was not identified any io json file", file=sys.stderr)
-        sys.exit(1)
-        
-    try:
-        iotests = json.load( iofile )
-    except:
-        # either not json, or badly formed json
-        pass
-            
-    #if not iotests.get("input") or not iotests.get("output"):
-    if not iotests.get("input"):
-        print("tst_oracle: malformed io.json. Provide input and output.", file=sys.stderr)
-        sys.exit(1)
-        
-    return iotests
-
-def get_reference():
-    # was reference provided in command line?
-    if len(sys.argv) < 2:
-        print("syntax: tst_oracle [solref.py] [io.json]", file=sys.stderr)
-        sys.exit(1)
-
-    # get filename
-    filename = sys.argv[1]
-
-    # check if reference solution file exists on dir
+    # check if file exists on dir
     if not os.path.exists(filename):
-        print("tst_oracle: no reference solution file identified", file=sys.stderr)
+        print("tst_oracle: %s: no such file" % filename, file=sys.stderr)
         sys.exit(1)
         
     return filename
-
-### Add io test to json
-def add_test(iotests, tstjson):
     
-    # add test to json
-    tstjson['tests'].append(iotests)
-    tstlib.save_tstjson(tstjson)
-    
-### Restore original json tests
-def restore_tests(tstjson):
-    
-    # restore tests to json
-    tstjson['tests'].pop()
-    tstlib.save_tstjson(tstjson)
-
 ### Runs io tests on tst
-def run_test_command(reference):
+def run_test_command(reference, tstjson):
     
-    command_line = "tst test -o json %s" % reference
+    command_line = "tst test -f %s -o json %s" % (tstjson, reference)
+
     cmd = shlex.split(command_line.encode('utf-8'))
-    
     try:
         return subprocess.check_output(cmd)
     except subprocess.CalledProcessError:
@@ -94,84 +48,68 @@ def run_test_command(reference):
         print(cmd)
 
 ### Oracle evaluation about user io, according to test result
-def oracle_eval(iotests, results):
+def oracle_eval(results):
     
     ev = {
         "input_is_valid": "",
         "output_is_valid": "",
-        "user_input": "",
-        "user_output": "",
-        "output": "",
-        "test_status": ""
+        "user_input": results.get("input"),
+        "user_output": results.get("output"),
+        "output": results.get("stdout"),
+        "test_status": results.get("summary")
     }
     # input_is_valid if tests_results: "Success": ".", "NormalizedSuccess": "*" or "Fail": "F" and False otherwise.
-    ev["input_is_valid"] = True if results["summary"] in ".*F" else False
+    summary = results.get("summary")
     
-    if results["summary"] == ".":
+    ev["input_is_valid"] = True if summary in ".*F" else False
+    
+    if summary == ".":
         # output_is_valid if tests_results: "Success": "."    
         ev["output_is_valid"] = True
         
-    elif results["summary"] in "*F" and iotests.get("output"):
+    elif summary in "*F" and results.get("output"):
         # not output_is_valid in case of failure
         ev["output_is_valid"] = False
     else:
         # output_is_valid is undefined when it cannot be executed or not provided by user.
         ev["output_is_valid"] = None
         
-    ev["user_input"] = iotests["input"]
-    ev["user_output"] = iotests.get("output")
-    ev["output"] = results.get("stdout")
-    ev["test_status"] = results.get("summary")
-        
     return ev
 
 ### Pepare json-like output
-def pack_results(iotests, results):
+def pack_results(results):
     
-    print ("checkout output!!")
-    print (results)
-    
-    #Get user test result
-    result = json.loads(results)[-1]["results"][-1]
+    result = json.loads(results)
     
     # perform oracle evaluation
-    out = oracle_eval(iotests, result)
-    
-    # json format
-    json_output = tstlib.data2json(out)
+    out = oracle_eval( result[0]["tests"][0])
+    json_output = tst.data2json(out)
     
     return json_output
 
 
 def main():
 
-    # read reference solution code
-    filename = get_reference()
-    #read user input/output tests
-    iotests = get_iotests()
-    
-    # read tst.json
-    tstjson = tstlib.read_tstjson(exit=True)
-    
-    # add test to json
-    add_test(iotests, tstjson)
+    # read reference and test files
+    reference =  get_filename("reference")
+    tests =  get_filename("tests")
     
     #run tst test
-    results = run_test_command(filename)
-    
-    # restore original json tests
-    restore_tests(tstjson)
+    results = run_test_command(reference, tests)
     
     # pack output
-    json_output = pack_results(iotests, results) 
+    json_output = pack_results(results) 
     
     print( json_output )
 
 if __name__ == "__main__":
     
-    if len(sys.argv) < 2:
-        print("Usage: tst_oracle.py reference.py io_esvalidos.json")
-        print("Provide reference solution file.")
+    if len(sys.argv) > 1 and sys.argv[1] == '--one-line-help':
+        print("tst oracle: verify if provided input and output are valid")
         sys.exit()
-    
+
+    if len(sys.argv) < 3:
+        print("Usage: tst_oracle.py reference.py valid_io.json")
+        sys.exit()
+     
     main()
